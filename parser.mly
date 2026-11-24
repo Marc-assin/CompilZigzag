@@ -1,4 +1,7 @@
-{exception Parsing_error string*int*int}
+{
+    open Ast
+    exception Parsing_error string*int*int
+}
 
 %token TBreak
 %token TContinue
@@ -37,7 +40,7 @@
 %token <string> TBuiltin
 %token <string> TIdent
 %token <string> TString
-%token <int> TInt
+%token <string> TInt
 
 %left TOr
 %left TAnd 
@@ -48,15 +51,15 @@
 %type <Ast.program> file
 %%
 
-file : std f = fundef* EOF {AProgram(AStd, f)}
+file : std f = fundef* EOF {AProgram(f)}
 
 std : TConst TStd TEqual b = TBuiltin TLpar s = TString TRpar TSemicolon
         { if b = "import" && s = "std" then () else raise Parsing_error ("Oublié d'importer std", -1, -1)}
 
 fundef : pub = TPub? TFn s = TIdent TLpar p = separated_list(TComma, param) TRpar t = type b = block 
-        { AFundef ( match pub with 
+        { AFundef ( (match pub with 
                     | Some _ -> true 
-                    | None -> false, s, p, t, b)}
+                    | None -> false), s, p, t, b)}
 
 param :  (TUnder | s = TIdent)  ':' t = type 
         { AParam (option(s), t)}
@@ -70,13 +73,15 @@ block : TLacc sl = stmt* TRacc
 stmt : e = expr TSemicolon
         { e }
     | TReturn e = expr? TSemicolon
-        { AReturn e}
-    | t1 = (TVar | TConst) s = TIdent TColon t2 = type TEqual e = expr TSemicolon
-        { ADef (t1, s, t, e) }
+        { AReturn e }
+    | TConst s = TIdent TColon t2 = type TEqual e = expr TSemicolon
+        { ADecl (AConst, s, t, e) }
+    | TVar s = TIdent TColon t2 = type TEqual e = expr TSemicolon
+        { ADecl (AVar, s, t, e) }
     | TIf TLpar ex = expr TRpar b = block e = else?
         { AIf (ex, b, e) }
     | TWhile TLpar e = expr TRpar b = block
-        { AWhile (e, b)}
+        { AWhile (e, b) }
     | TBreak TSemicolon
         { ABreak }
     | TContinue TSemicolon
@@ -89,7 +94,7 @@ stmt : e = expr TSemicolon
 simple-stmt : b = block
         { b }
     | ( TUnder | i = ident ) TEqual e = expr
-        { ASplstmt (i, e) }
+        { AAssign (i, e) }
     | TStd TPoint TDebug TPoint TPrint TLpar s = TString TComma TPoint TLacc p = separated_list(TComma, expr) TRacc TRpar TSemicolon
         { APrint (s, p) }
 
@@ -106,11 +111,11 @@ expr :
     | TUnreachable
         { AUnreachable }
     | TNot e = expr 
-        { ANot e}
+        { AUop(UNot, e)}
     | TMinus e = expr %prec TNeg
-        { AMinus e }
+        { AUop(UNeg, e) }
     | e1 = expr b = binop e2 = expr 
-        { ABinop (b, e1, e2) }
+        { ABop (b, e1, e2) }
     | f = (TIdent | TBuiltin) TLpar e = separated_list(TComma, expr) TRpar
         { AFun (f, e)}
     | TLpar e = expr TRpar 
@@ -118,25 +123,25 @@ expr :
 
 binop :
     TEqq
-        { AEqq }
+        { BEq }
     | TNeq
-        { ANeq }
+        { BNeq }
     | TInf
-        { AInf }
+        { BLt }
     | TInfeq
-        { AInfeq }
+        { BLeq }
     | TSup
-        { ASup }
+        { BGt }
     | TSupeq
-        { ASupeq }
+        { BGeq }
     | TPlus
-        { APlus }
+        { BAdd }
     | TMinus 
-        { AMinus }
+        { BSub }
     | TTimes
-        { ATimes }
+        { BMul }
     | TAnd 
-        { AAnd }
+        { BAnd }
     | TOr 
-        { AOr }
+        { BOr }
 
